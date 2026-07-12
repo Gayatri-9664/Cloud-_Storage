@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CloudBox — File Storage</title>
+<style>
+  :root { --accent: #3B6D11; --bg: #f7f7f5; --card: #fff; --border: #ddd; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: var(--bg); margin: 0; padding: 0; color: #222; }
+  header { background: var(--accent); color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 20px; }
+  #app { max-width: 800px; margin: 30px auto; padding: 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  input, button { font-size: 14px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); }
+  input { width: 100%; margin-bottom: 10px; }
+  button { background: var(--accent); color: white; border: none; cursor: pointer; }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: #888; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+  .row:last-child { border-bottom: none; }
+  .muted { color: #777; font-size: 13px; }
+  #breadcrumb { margin-bottom: 12px; font-size: 14px; color: #555; }
+  #breadcrumb span { cursor: pointer; color: var(--accent); }
+  .hidden { display: none; }
+  .actions button { margin-left: 6px; padding: 4px 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>☁️ CloudBox</h1>
+  <div id="userBar" class="hidden">
+    <span id="userEmail" style="margin-right:12px;"></span>
+    <button class="secondary" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<div id="app">
+
+  <!-- AUTH VIEW -->
+  <div id="authView" class="card">
+    <h2 id="authTitle">Login</h2>
+    <input id="authEmail" placeholder="Email" type="email">
+    <input id="authPassword" placeholder="Password" type="password">
+    <button onclick="doLogin()">Login</button>
+    <button class="secondary" onclick="doRegister()">Register instead</button>
+    <p id="authError" class="muted" style="color:red;"></p>
+  </div>
+
+  <!-- MAIN VIEW -->
+  <div id="mainView" class="hidden">
+    <div class="card">
+      <div id="breadcrumb"></div>
+      <div style="display:flex; gap:10px; margin-bottom: 14px;">
+        <input id="newFolderName" placeholder="New folder name" style="margin-bottom:0;">
+        <button onclick="createFolder()">+ Folder</button>
+        <input type="file" id="fileInput" style="display:none" onchange="uploadFile()">
+        <button onclick="document.getElementById('fileInput').click()">Upload file</button>
+      </div>
+      <div id="listing"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="config.js"></script>
+<script>
+const API = API_BASE;
+let token = localStorage.getItem('token') || null; // demo only — see note below
+let userEmail = localStorage.getItem('userEmail') || null;
+let currentFolder = null;
+let folderStack = []; // for breadcrumb navigation
+
+function showAuthed() {
+  document.getElementById('authView').classList.add('hidden');
+  document.getElementById('mainView').classList.remove('hidden');
+  document.getElementById('userBar').classList.remove('hidden');
+  document.getElementById('userEmail').textContent = userEmail;
+  loadFolder(null);
+}
+
+async function doRegister() {
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+  const res = await fetch(`${API}/auth/register`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if (!res.ok) return document.getElementById('authError').textContent = data.error;
+  token = data.token; userEmail = data.user.email;
+  localStorage.setItem('token', token); localStorage.setItem('userEmail', userEmail);
+  showAuthed();
+}
+
+async function doLogin() {
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+  const res = await fetch(`${API}/auth/login`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if (!res.ok) return document.getElementById('authError').textContent = data.error;
+  token = data.token; userEmail = data.user.email;
+  localStorage.setItem('token', token); localStorage.setItem('userEmail', userEmail);
+  showAuthed();
+}
+
+function logout() {
+  token = null; localStorage.clear();
+  document.getElementById('mainView').classList.add('hidden');
+  document.getElementById('userBar').classList.add('hidden');
+  document.getElementById('authView').classList.remove('hidden');
+}
+
+async function loadFolder(folderId) {
+  currentFolder = folderId;
+  const url = folderId ? `${API}/folders/${folderId}` : `${API}/folders`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  renderListing(data.folders, data.files);
+  renderBreadcrumb();
+}
+
+function renderBreadcrumb() {
+  const el = document.getElementById('breadcrumb');
+  el.innerHTML = '<span onclick="goRoot()">Home</span>' +
+    folderStack.map(f => ` / <span onclick="goToStackIndex('${f.id}')">${f.name}</span>`).join('');
+}
+
+function goRoot() { folderStack = []; loadFolder(null); }
+function goToStackIndex(id) {
+  const idx = folderStack.findIndex(f => f.id === id);
+  folderStack = folderStack.slice(0, idx + 1);
+  loadFolder(id);
+}
+
+function renderListing(folders, files) {
+  const el = document.getElementById('listing');
+  if (folders.length === 0 && files.length === 0) {
+    el.innerHTML = '<p class="muted">Empty folder. Upload a file or create a folder to get started.</p>';
+    return;
+  }
+  el.innerHTML =
+    folders.map(f => `
+      <div class="row">
+        <span onclick='openFolder(${JSON.stringify(f)})' style="cursor:pointer;">📁 ${f.name}</span>
+        <div class="actions">
+          <button class="secondary" onclick="deleteFolder('${f.id}')">Delete</button>
+        </div>
+      </div>`).join('') +
+    files.map(f => `
+      <div class="row">
+        <span>📄 ${f.filename} <span class="muted">(${formatSize(f.size)})</span></span>
+        <div class="actions">
+          <button onclick="downloadFile('${f.id}')">Download</button>
+          <button onclick="shareFile('${f.id}')">Share</button>
+          <button class="secondary" onclick="deleteFile('${f.id}')">Delete</button>
+        </div>
+      </div>`).join('');
+}
+
+function openFolder(folder) {
+  folderStack.push(folder);
+  loadFolder(folder.id);
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 KB';
+  const kb = bytes / 1024;
+  return kb > 1024 ? (kb/1024).toFixed(1) + ' MB' : kb.toFixed(1) + ' KB';
+}
+
+async function createFolder() {
+  const name = document.getElementById('newFolderName').value.trim();
+  if (!name) return;
+  await fetch(`${API}/folders`, {
+    method: 'POST', headers: {'Content-Type':'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({ name, parent_folder_id: currentFolder })
+  });
+  document.getElementById('newFolderName').value = '';
+  loadFolder(currentFolder);
+}
+
+async function deleteFolder(id) {
+  await fetch(`${API}/folders/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  loadFolder(currentFolder);
+}
+
+async function uploadFile() {
+  const input = document.getElementById('fileInput');
+  const file = input.files[0];
+  if (!file) return;
+
+  // 1. Ask backend for a pre-signed S3 upload URL
+  const res = await fetch(`${API}/files/upload-url`, {
+    method: 'POST', headers: {'Content-Type':'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, folder_id: currentFolder })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+
+  // 2. Upload the file bytes directly to S3
+  await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+
+  input.value = '';
+  loadFolder(currentFolder);
+}
+
+async function downloadFile(id) {
+  const res = await fetch(`${API}/files/${id}/download-url`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error);
+  window.open(data.downloadUrl, '_blank');
+}
+
+async function shareFile(id) {
+  const res = await fetch(`${API}/share/${id}`, {
+    method: 'POST', headers: {'Content-Type':'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({})
+  });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error);
+  prompt('Share this link:', `${window.location.origin}/share.html?token=${data.shareToken}`);
+}
+
+async function deleteFile(id) {
+  await fetch(`${API}/files/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  loadFolder(currentFolder);
+}
+
+// Auto-login if a token is already stored
+if (token) showAuthed();
+</script>
+</body>
+</html>
