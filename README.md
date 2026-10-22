@@ -1,127 +1,188 @@
-# CloudBox — Cloud File Storage System
+# CloudBox - Cloud File Storage System
 
-A minimal but complete cloud file storage app: user auth, nested folders, file
-upload/download via AWS S3 pre-signed URLs, and shareable links.
+A cloud-based file storage application that allows users to securely upload, organize, download, and share files. It uses **AWS S3 pre-signed URLs** so files are uploaded and downloaded directly between the browser and Amazon S3, while the backend manages authentication and file metadata.
 
-## Architecture
+---
 
-- **Backend:** Node.js + Express + JWT auth
-- **Metadata DB:** SQLite (via `better-sqlite3`) — zero setup, single file, good enough for a demo/internship project
-- **File storage:** AWS S3, accessed via **pre-signed URLs** — the browser uploads/downloads directly to/from S3, the backend never touches file bytes, only metadata
-- **Frontend:** Plain HTML/CSS/JS (no build step, just open in a browser)
+## **Live Demo**
 
+**Frontend:** https://clinquant-cat-e4b016.netlify.app
+
+**Backend API:** https://cloud-storage-yk5i.onrender.com
+
+---
+
+## **Features**
+
+- User Registration & Login (JWT Authentication)
+- Create, Rename, and Delete Folders
+- Upload Files Directly to AWS S3
+- Download Files from AWS S3
+- Generate Public Share Links
+- Organize Files in Nested Folders
+- Delete Files and Folders
+- Secure Cloud Storage with AWS S3 Pre-Signed URLs
+
+---
+
+## **Tech Stack**
+
+### **Frontend**
+- HTML
+- CSS
+- JavaScript
+
+### **Backend**
+- Node.js
+- Express.js
+- JWT Authentication
+
+### **Database**
+- SQLite (`better-sqlite3`)
+
+### **Cloud Services**
+- AWS S3
+- AWS IAM
+- Pre-Signed URLs
+
+### **Deployment**
+- Netlify
+- Render
+
+---
+
+## **System Architecture**
+
+```text
+Browser
+    │
+    ▼
+Frontend (HTML/CSS/JS)
+    │
+    ▼
+Express REST API
+    │
+    ├── SQLite (Metadata)
+    │
+    └── AWS S3 (File Storage)
+           ▲
+           │
+Direct Upload & Download
+using Pre-Signed URLs
 ```
+
+---
+
+## **Project Structure**
+
+```text
 cloud-storage/
+│
 ├── backend/
-│   ├── server.js         # Express app entry point
-│   ├── db.js              # SQLite schema + connection
-│   ├── s3.js               # Pre-signed URL generation
-│   ├── middleware/auth.js  # JWT verification
-│   └── routes/
-│       ├── auth.js         # register / login
-│       ├── folders.js      # create / list / rename / delete folders
-│       ├── files.js        # upload-url / download-url / delete
-│       └── share.js        # create + resolve share links
+│   ├── middleware/
+│   ├── routes/
+│   ├── db.js
+│   ├── s3.js
+│   └── server.js
+│
 └── frontend/
-    ├── index.html          # main app (login, browse, upload, share)
-    └── share.html          # public page for opening a shared link
+    ├── index.html
+    ├── share.html
+    ├── config.js
+    ├── css/
+    └── js/
 ```
 
-## Setup (10 minutes)
+---
 
-### 1. AWS S3 bucket
-1. Create an S3 bucket in the AWS console (any region).
-2. Create an IAM user with `AmazonS3FullAccess` (or a scoped policy for that bucket) and generate an access key.
-3. In the bucket's **Permissions → CORS**, add:
-```json
-[
-  {
-    "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET", "PUT"],
-    "AllowedHeaders": ["*"]
-  }
-]
+## **Installation**
+
+### **1. Clone the Repository**
+
+```bash
+git clone https://github.com/your-username/cloud-storage.git
+cd cloud-storage
 ```
-This is required — without it, the browser's direct upload/download to S3 will be blocked.
 
-### 2. Backend
+### **2. Install Dependencies**
+
 ```bash
 cd backend
 npm install
-cp .env.example .env
-# edit .env: set JWT_SECRET, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME
+```
+
+### **3. Configure Environment Variables**
+
+Create a `.env` file inside the `backend` folder.
+
+```env
+JWT_SECRET=your_secret
+AWS_REGION=your_region
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+S3_BUCKET_NAME=your_bucket_name
+```
+
+### **4. Start the Backend**
+
+```bash
 npm start
 ```
-Server runs on `http://localhost:4000`. Check `http://localhost:4000/health`.
 
-### 3. Frontend
-No build step needed. Just open `frontend/index.html` in a browser
-(or run `npx serve frontend` for a proper local server, which is safer for the share-link flow).
+Backend runs on:
 
-### 4. Try it
-1. Register a user → you're logged in.
-2. Create a folder, upload a file into it.
-3. Click Download — it should open the file straight from S3.
-4. Click Share — copy the link, open it in a new tab (or incognito) — it should resolve without login.
+```text
+http://localhost:4000
+```
 
-## Deploying (backend on Render, frontend on Netlify — free, fast)
+### **5. Run the Frontend**
 
-### Backend → Render
-1. Push this whole project to a GitHub repo (Render deploys from GitHub):
-   ```bash
-   cd cloud-storage
-   git init && git add . && git commit -m "cloudbox"
-   # create a repo on github.com, then:
-   git remote add origin https://github.com/<you>/cloud-storage.git
-   git push -u origin main
-   ```
-2. Go to [render.com](https://render.com) → New → Web Service → connect your repo.
-   Render will detect `render.yaml` automatically and pre-fill the build/start
-   commands and root directory (`backend`). If it doesn't pick it up, set manually:
-   - Root directory: `backend`
-   - Build command: `npm install`
-   - Start command: `npm start`
-3. Add the env vars it asks for: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`
-   (`JWT_SECRET` is auto-generated by `render.yaml`).
-4. Deploy. You'll get a URL like `https://cloudbox-backend.onrender.com`.
-   Confirm it's alive: visit `https://cloudbox-backend.onrender.com/health`.
+Open `frontend/index.html` in your browser or serve the frontend using any static server.
 
-**Note on the free tier:** the disk is ephemeral (wiped on redeploy/restart) and
-the service spins down after inactivity, so your SQLite data won't survive
-long-term and the first request after idling will be slow (~30s cold start).
-Totally fine for a demo/submission; if you need persistence later, add a
-Render persistent disk or move metadata to a hosted Postgres (e.g. Render's
-free Postgres, or Supabase).
+---
 
-### Frontend → Netlify Drop (no CLI, no build)
-1. Edit `frontend/config.js` — set `API_BASE` to your Render URL from above.
-2. Go to [app.netlify.com/drop](https://app.netlify.com/drop) and drag the
-   `frontend` folder onto the page. It deploys instantly and gives you a live URL.
-3. Open that URL, register a user, and test upload/download/share end to end.
+## **API Modules**
 
-### One thing to double check after deploying
-Your S3 bucket's CORS `AllowedOrigins` is currently `"*"`, which will work
-fine with the new frontend URL. If you tighten it later, add your Netlify URL
-explicitly.
+- Authentication
+- Folder Management
+- File Upload
+- File Download
+- File Sharing
+- File & Folder Deletion
 
-## If you're really out of time
+---
 
+## **Security**
 
-If AWS setup is the blocker, you can demo everything **except S3** by pointing
-`s3.js` at a mock — but for a resume-worthy submission, wiring up the real S3
-bucket is the single highest-value 10 minutes you can spend, since "pre-signed
-URL direct upload" is the detail interviewers actually ask about.
+- JWT-based Authentication
+- Password Hashing
+- Secure AWS S3 Pre-Signed URLs
+- Backend stores only file metadata
+- Direct browser-to-S3 file transfers
 
-## Known simplifications (mention these if asked — they show you understand the tradeoffs)
+---
 
-- JWT stored in `localStorage` on the frontend — fine for a class project, but
-  vulnerable to XSS in production; a real app would use an httpOnly cookie.
-- No file versioning or trash/recycle bin.
-- Share links never expire and have no revoke endpoint yet.
-- No pagination on folder listings — fine at small scale, would need it for many files.
+## **Future Improvements**
 
-## Possible next steps if you have extra time
-- Add a "recent files" view
-- Add drag-and-drop upload
-- Add search by filename
-- Add share-link expiry (`expires_at` column + check in `share.js`)
+- Share Link Expiration
+- File Versioning
+- Drag-and-Drop Uploads
+- File Search
+- Recent Files Dashboard
+- Recycle Bin
+- File Preview Support
+
+---
+
+## **Key Learning Outcomes**
+
+- REST API Development
+- JWT Authentication
+- AWS S3 Integration
+- Pre-Signed URL Generation
+- SQLite Database Design
+- Cloud Storage Architecture
+- Full-Stack Web Development
+- Secure File Upload & Download
+
+---
